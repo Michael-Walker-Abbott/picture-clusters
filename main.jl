@@ -10,7 +10,7 @@ end
 function kmeans(data, k, max_iter=100)
     n, d = size(data)
     centroids = data[shuffle(1:n)[1:k], :]
-    clusters = zeros(Int, n)
+    cluster_assignments = zeros(Int, n)
     total_square_distances = Inf
     
     for iter in 1:max_iter
@@ -23,7 +23,7 @@ function kmeans(data, k, max_iter=100)
             for j in 1:k
                 distance = euclidean_distance(data[i, :], centroids[j, :])
                 if distance < min_distance
-                    clusters[i] = j
+                    cluster_assignments[i] = j
                     min_distance = distance
                 end
             end
@@ -32,43 +32,54 @@ function kmeans(data, k, max_iter=100)
         
         
         for j in 1:k
-            cluster_points = data[clusters .== j, :]
+            cluster_points = data[cluster_assignments .== j, :]
             centroids[j, :] = mean(cluster_points, dims=1)
         end
     end
     
-    return centroids, clusters
+    return centroids, cluster_assignments
 end
 
 
 using Images
+
+function make_n_by_3(image)
+    rows,columns = size(image)
+    num_of_pixels = rows*columns
+    return transpose(reshape(channelview(image),3,num_of_pixels))
+end
+
+
+
+function make_color_stripes(image, L_factor=0.4, k=6, k_iters=16)
+    Lab_n_by_3 = make_n_by_3(convert.(Lab,image))
+    rows,columns = size(image)
+    
+    Lab_n_by_3_adjusted_L = copy(Lab_n_by_3)
+    Lab_n_by_3_adjusted_L[:,1] .*= L_factor
+
+    centroids, cluster_assignments = kmeans(Lab_n_by_3_adjusted_L, k, k_iters)
+
+    separated_colors_pic = copy(Lab_n_by_3[cluster_assignments .== 1,:])
+    for i in 2:k
+        separated_colors_pic = vcat(separated_colors_pic,Lab_n_by_3[cluster_assignments .== i,:])
+    end
+
+    return colorview(Lab,reshape(transpose(separated_colors_pic),3,rows,columns))
+end
+
 # Load the image
+image = load("pictures/Mona_Lisa.jpg")
+make_color_stripes(image)
 
-img = load("pictures/scream.jpeg")
 
-
-rows,columns = size(img)
-num_of_pixels = rows*columns
-
-Labimg = convert.(Lab,img)
-pixel_vector = transpose(reshape(channelview(Labimg),3,num_of_pixels))
-ab_values_vector = pixel_vector[:,2:3]
-
-k = 4
-centroids, clusters = kmeans(ab_values_vector,k, 15)
-
-new_images = zeros(k,num_of_pixels,3)
 
 for i in 1:num_of_pixels
-    new_images[clusters[i],i,:] = pixel_vector[i,:]
+    new_images[cluster_assignments[i],i,:] = Lab_vector[i,:]
 end
 
 display(img)
 for i in 1:k
     display(colorview(Lab,reshape(transpose(new_images[i,:,:]),3,rows,columns)))
 end
-
-pixel_vector[2]
-
-
-img[400,200]
+img
